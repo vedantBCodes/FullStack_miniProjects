@@ -9,41 +9,48 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogIn = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(" http://localhost:3000/login ", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+const handleLogin = async (e) => {
+  e.preventDefault();
+  try {
+    const res = await fetch("http://localhost:3000/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-      if (res.ok) {
-        const data = await res.json();
-        console.log(data);
-        
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          toast.success("Login successful!");
-        } else {
-          alert(data.message);
-        }
+    const result = await res.json();
 
-        setTimeout(() => navigate("/"), 3000); // ✅ Redirect to home or dashboard
-      } else {
-        const errorText = await res.text();
-        toast.error(`Login failed: ${errorText}`);
-      }
-    } catch (err) {
-      toast.error("Server error. Please try again.");
+    if (res.ok) {
+      const token = result.token;
+      localStorage.setItem("token", token);
+      toast.success("Login successful!");
+
+      // ✅ Handle automatic logout when token expires
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiryTime = payload.exp * 1000 - Date.now();
+
+      setTimeout(() => {
+        localStorage.removeItem("token");
+        toast.info("Session expired. Please login again.");
+        window.location.href = "/login";
+      }, expiryTime);
+
+      // navigate or redirect to dashboard
+      setTimeout(() => navigate("/tasks"), 1500);
+    } else {
+      toast.error(result.message || "Login failed");
     }
-  };
+  } catch (err) {
+    toast.error("Server error. Try again later.");
+  }
+};
+
 
   return (
     <>
       <div className="container">
         <h1>Log In</h1>
-        <form onSubmit={handleLogIn}>
+        <form onSubmit={handleLogin}>
           <input
             type="email"
             placeholder="Enter your email"
