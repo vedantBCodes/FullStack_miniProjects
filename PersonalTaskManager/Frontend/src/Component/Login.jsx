@@ -25,16 +25,6 @@ const handleLogin = async (e) => {
       localStorage.setItem("token", token);
       toast.success("Login successful!");
 
-      // ✅ Handle automatic logout when token expires
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      const expiryTime = payload.exp * 1000 - Date.now();
-
-      setTimeout(() => {
-        localStorage.removeItem("token");
-        toast.info("Session expired. Please login again.");
-        window.location.href = "/login";
-      }, expiryTime);
-
       // navigate or redirect to dashboard
       setTimeout(() => navigate("/tasks"), 1500);
     } else {

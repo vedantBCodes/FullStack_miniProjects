@@ -1,52 +1,55 @@
 const express = require('express');
 const cors = require('cors');
-const app = express();
 const mongoose = require('mongoose');
 const dotenv = require("dotenv");
-dotenv.config();
-app.use(cors());
-app.use(express.json()); 
 const jwt = require("jsonwebtoken");
-
 const authMiddleware = require("./Middleware/authMiddleware");
 
+dotenv.config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ✅ Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
-.then(()=>{
-    console.log("Connected to database" );
+.then(() => {
+  console.log("Connected to database");
 })
-.catch(()=>{
-    console.log("Failed to connect");
+.catch(() => {
+  console.log("Failed to connect to database");
 });
 
+// ✅ User Schema & Model
 const userSchema = new mongoose.Schema({
-    name : String ,
-    email :{
-      type: String ,
-      unique: true ,
-      required: true
-    },
-    password : String
+  name: String,
+  email: {
+    type: String,
+    unique: true,
+    required: true
+  },
+  password: String
 });
 
 const Todouser = mongoose.model("Todouser", userSchema);
 
-// ✅ Task schema and model
+// ✅ Task Schema & Model
 const taskSchema = new mongoose.Schema({
-  title: { 
-    type: String, 
-    required: true 
+  title: {
+    type: String,
+    required: true
   },
-  description: { 
-    type: String, 
-    required: true 
+  description: {
+    type: String,
+    required: true
   },
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "Todouser" 
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Todouser"
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
@@ -56,8 +59,6 @@ const Task = mongoose.model("Task", taskSchema);
 app.post('/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    console.log("Request body received:", req.body);
 
     const newUser = new Todouser({ name, email, password });
     await newUser.save();
@@ -87,31 +88,51 @@ app.post('/login', async (req, res) => {
       return res.status(401).send("Incorrect password");
     }
 
-    console.log("Login Successful", req.body);
+    const token = jwt.sign(
+      { userId: user._id, userName: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: "3h" }
+    );
 
-    const token = jwt.sign({ userId: user._id , userName: user.name }, process.env.JWT_SECRET, { expiresIn: "1h" });
     res.json({ token });
-
   } catch (err) {
-    console.error("Login Error", err);
-    res.status(500).send("Server Error");
+    console.error("Login error:", err);
+    res.status(500).send("Server error");
   }
 });
 
-// ✅ Get Tasks Route (Protected)
+// ✅ Get All Tasks (Protected)
 app.get("/tasks", authMiddleware, async (req, res) => {
   try {
     const id = req.user.userId;
-    const data = await Task.find({ user: id }); // ✅ user field in Task model must exist
-    res.status(200).json(data); // ✅ send proper status code
+    const data = await Task.find({ user: id });
+    res.status(200).json(data);
   } catch (error) {
     console.error("Error fetching tasks:", error);
     res.status(500).json({ message: "Failed to fetch tasks." });
   }
 });
 
+// ✅ Get Single Task by ID (Protected)
+app.get("/tasks/:id", authMiddleware, async (req, res) => {
+  const userId = req.user.userId;
+  const taskId = req.params.id;
 
-// ✅ Add Task Route (Protected)
+  try {
+    const task = await Task.findOne({ _id: taskId, user: userId });
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found or unauthorized" });
+    }
+
+    res.status(200).json(task);
+  } catch (err) {
+    console.error("Error fetching task:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ Add Task (Protected)
 app.post("/add-tasks", authMiddleware, async (req, res) => {
   const { title, description } = req.body;
 
@@ -130,6 +151,48 @@ app.post("/add-tasks", authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ Delete Task (Protected)
+app.delete("/tasks/:id", authMiddleware, async (req, res) => {
+  const userId = req.user.userId;
+  const taskId = req.params.id;
+
+  try {
+    const deletedTask = await Task.findOneAndDelete({ _id: taskId, user: userId });
+    if (!deletedTask) {
+      return res.status(404).json({ message: "Task not found or unauthorized" });
+    }
+
+    res.json({ message: "Task deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ Update Task (Protected)
+app.put("/edit-task/:id", authMiddleware, async (req, res) => {
+  const userId = req.user.userId;
+  const taskId = req.params.id;
+  const { title, description } = req.body;
+
+  try {
+    const updatedTask = await Task.findOneAndUpdate(
+      { _id: taskId, user: userId },
+      { title, description },
+      { new: true }
+    );
+
+    if (!updatedTask) {
+      return res.status(404).json({ message: "Task not found or unauthorized" });
+    }
+
+    res.status(200).json(updatedTask);
+  } catch (err) {
+    console.error("Error updating task:", err);
+    res.status(500).json({ message: "Server error while updating task" });
+  }
+});
+
+// ✅ Start Server
 app.listen(process.env.PORT, () => {
   console.log("App is listening on port", process.env.PORT);
 });
